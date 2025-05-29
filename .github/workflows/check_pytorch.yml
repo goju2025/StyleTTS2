@@ -1,0 +1,25 @@
+name: Check PyTorch Version
+
+on: [push, pull_request]
+
+jobs:
+  check-pytorch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.8' # Or a version known to be compatible with the project
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify PyTorch installation and version
+        run: |
+          python -c "import torch; print(f'Successfully imported PyTorch version: {torch.__version__}')"
+          # Optionally, add a more specific version check if needed, e.g.:
+          # python -c "import torch; assert torch.__version__.startswith('2.7.'), f'Incorrect PyTorch version: {torch.__version__}'"

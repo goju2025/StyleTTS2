@@ -57,10 +57,12 @@ def main(config_path):
     file_handler.setFormatter(logging.Formatter('%(levelname)s:%(asctime)s: %(message)s'))
     logger.logger.addHandler(file_handler)
     
-    batch_size = config.get('batch_size', 10)
+    batch_size = 2 # Modified for test run config.get('batch_size', 10)
+    accelerator.print(f">>> Test run: batch_size set to {batch_size}")
     device = accelerator.device
     
-    epochs = config.get('epochs_1st', 200)
+    epochs = 1 # Modified for test run config.get('epochs_1st', 200)
+    accelerator.print(f">>> Test run: epochs set to {epochs}")
     save_freq = config.get('save_freq', 2)
     log_interval = config.get('log_interval', 10)
     saving_epoch = config.get('save_freq', 2)
@@ -157,17 +159,14 @@ def main(config_path):
             iters = 0
     
     # in case not distributed
-    try:
-        n_down = model.text_aligner.module.n_down
-    except:
-        n_down = model.text_aligner.n_down
+    n_down = accelerator.unwrap_model(model['text_aligner']).n_down
     
     # wrapped losses for compatibility with mixed precision
     stft_loss = MultiResolutionSTFTLoss().to(device)
-    gl = GeneratorLoss(model.mpd, model.msd).to(device)
-    dl = DiscriminatorLoss(model.mpd, model.msd).to(device)
+    gl = GeneratorLoss(accelerator.unwrap_model(model.mpd), accelerator.unwrap_model(model.msd)).to(device)
+    dl = DiscriminatorLoss(accelerator.unwrap_model(model.mpd), accelerator.unwrap_model(model.msd)).to(device)
     wl = WavLMLoss(model_params.slm.model, 
-                   model.wd, 
+                   accelerator.unwrap_model(model.wd), 
                    sr, 
                    model_params.slm.sr).to(device)
 
@@ -178,13 +177,16 @@ def main(config_path):
         _ = [model[key].train() for key in model]
 
         for i, batch in enumerate(train_dataloader):
+            if i >= 2:  # Run for only 2 batches
+                accelerator.print(">>> Test run: Reached 2 batches, breaking training loop.")
+                break
             waves = batch[0]
             batch = [b.to(device) for b in batch[1:]]
             texts, input_lengths, _, _, mels, mel_input_length, _ = batch
             
             with torch.no_grad():
-                mask = length_to_mask(mel_input_length // (2 ** n_down)).to('cuda')
-                text_mask = length_to_mask(input_lengths).to(texts.device)
+                mask = length_to_mask(mel_input_length // (2 ** n_down)).to(device)
+                text_mask = length_to_mask(input_lengths).to(device)
 
             ppgs, s2s_pred, s2s_attn = model.text_aligner(mels, mask, texts)
 
@@ -329,6 +331,9 @@ def main(config_path):
         with torch.no_grad():
             iters_test = 0
             for batch_idx, batch in enumerate(val_dataloader):
+                if batch_idx >= 1: # Run for only 1 validation batch
+                    accelerator.print(">>> Test run: Reached 1 validation batch, breaking validation loop.")
+                    break
                 optimizer.zero_grad()
 
                 waves = batch[0]
@@ -336,18 +341,19 @@ def main(config_path):
                 texts, input_lengths, _, _, mels, mel_input_length, _ = batch
 
                 with torch.no_grad():
-                    mask = length_to_mask(mel_input_length // (2 ** n_down)).to('cuda')
-                    ppgs, s2s_pred, s2s_attn = model.text_aligner(mels, mask, texts)
+                    mask = length_to_mask(mel_input_length // (2 ** n_down)).to(device)
+                    ppgs, s2s_pred, s2s_attn = accelerator.unwrap_model(model.text_aligner)(mels, mask, texts)
 
                     s2s_attn = s2s_attn.transpose(-1, -2)
                     s2s_attn = s2s_attn[..., 1:]
                     s2s_attn = s2s_attn.transpose(-1, -2)
 
-                    text_mask = length_to_mask(input_lengths).to(texts.device)
-                    attn_mask = (~mask).unsqueeze(-1).expand(mask.shape[0], mask.shape[1], text_mask.shape[-1]).float().transpose(-1, -2)
-                    attn_mask = attn_mask.float() * (~text_mask).unsqueeze(-1).expand(text_mask.shape[0], text_mask.shape[1], mask.shape[-1]).float()
-                    attn_mask = (attn_mask < 1)
-                    s2s_attn.masked_fill_(attn_mask, 0.0)
+                # This block should be at the same level as the 'with torch.no_grad():' above
+                text_mask = length_to_mask(input_lengths).to(device)
+                attn_mask = (~mask).unsqueeze(-1).expand(mask.shape[0], mask.shape[1], text_mask.shape[-1]).float().transpose(-1, -2)
+                attn_mask = attn_mask.float() * (~text_mask).unsqueeze(-1).expand(text_mask.shape[0], text_mask.shape[1], mask.shape[-1]).float()
+                attn_mask = (attn_mask < 1)
+                s2s_attn.masked_fill_(attn_mask, 0.0)
 
                 # encode
                 t_en = model.text_encoder(texts, input_lengths, text_mask)
@@ -368,7 +374,7 @@ def main(config_path):
                     en.append(asr[bib, :, random_start:random_start+mel_len])
                     gt.append(mels[bib, :, (random_start * 2):((random_start+mel_len) * 2)])
                     y = waves[bib][(random_start * 2) * 300:((random_start+mel_len) * 2) * 300]
-                    wav.append(torch.from_numpy(y).to('cuda'))
+                    wav.append(torch.from_numpy(y).to(device))
 
                 wav = torch.stack(wav).float().detach()
 

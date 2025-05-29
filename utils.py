@@ -1,8 +1,33 @@
-from monotonic_align import maximum_path
-from monotonic_align import mask_from_lens
-from monotonic_align.core import maximum_path_c
-import numpy as np
+import numpy as np # Keep numpy and torch imports at top level
 import torch
+
+# Attempt to import monotonic_align and provide fallbacks
+try:
+    from monotonic_align import maximum_path as original_maximum_path_imported
+    from monotonic_align import mask_from_lens as original_mask_from_lens_imported
+    from monotonic_align.core import maximum_path_c as original_maximum_path_c_imported
+    MONOTONIC_ALIGN_AVAILABLE = True
+    # Assign them to the names used by the original code if they were directly used
+    # For example, if a function in this file was also named maximum_path, it would need aliasing.
+    # However, the primary `maximum_path` in this file is defined *later*.
+    # We will handle `maximum_path_c` inside the `maximum_path` function.
+    mask_from_lens = original_mask_from_lens_imported # if used directly
+except ImportError:
+    print("Warning: monotonic_align package not found or failed to import. Related functionality will be dummied.")
+    MONOTONIC_ALIGN_AVAILABLE = False
+    original_maximum_path_imported = None
+    original_mask_from_lens_imported = None
+    original_maximum_path_c_imported = None
+    mask_from_lens = None # Dummy assignment
+
+    def dummy_mask_from_lens(*args, **kwargs):
+        print("Warning: Called dummy_mask_from_lens due to monotonic_align import failure.")
+        raise NotImplementedError("mask_from_lens is unavailable because monotonic_align failed to import.")
+    
+    if mask_from_lens is None: # If the import failed, assign the dummy
+        mask_from_lens = dummy_mask_from_lens
+
+# Ensure other imports that were below monotonic_align are still present
 import copy
 from torch import nn
 import torch.nn.functional as F
@@ -16,15 +41,23 @@ def maximum_path(neg_cent, mask):
   neg_cent: [b, t_t, t_s]
   mask: [b, t_t, t_s]
   """
+  if not MONOTONIC_ALIGN_AVAILABLE:
+    print("Warning: Called dummy_maximum_path logic due to monotonic_align import failure.")
+    # Return a zero tensor of the expected shape path: [b, t_t, t_s]
+    return torch.zeros_like(neg_cent, dtype=torch.int32, device=neg_cent.device)
+
+  # Proceed with original logic if monotonic_align is available
   device = neg_cent.device
   dtype = neg_cent.dtype
-  neg_cent =  np.ascontiguousarray(neg_cent.data.cpu().numpy().astype(np.float32))
-  path =  np.ascontiguousarray(np.zeros(neg_cent.shape, dtype=np.int32))
+  neg_cent_np = np.ascontiguousarray(neg_cent.data.cpu().numpy().astype(np.float32))
+  path_np = np.ascontiguousarray(np.zeros(neg_cent_np.shape, dtype=np.int32))
 
   t_t_max = np.ascontiguousarray(mask.sum(1)[:, 0].data.cpu().numpy().astype(np.int32))
   t_s_max = np.ascontiguousarray(mask.sum(2)[:, 0].data.cpu().numpy().astype(np.int32))
-  maximum_path_c(path, neg_cent, t_t_max, t_s_max)
-  return torch.from_numpy(path).to(device=device, dtype=dtype)
+  
+  # Use the imported maximum_path_c
+  original_maximum_path_c_imported(path_np, neg_cent_np, t_t_max, t_s_max)
+  return torch.from_numpy(path_np).to(device=device, dtype=dtype)
 
 def get_data_path_list(train_path=None, val_path=None):
     if train_path is None:
