@@ -131,7 +131,7 @@ class FilePathDataset(torch.utils.data.Dataset):
             text.insert(0, 0)
             text.append(0)
 
-            ref_text = torch.LongTensor(text)
+            ref_text = torch.tensor(text, dtype=torch.long)
         
         return speaker_id, acoustic_feature, text_tensor, ref_text, ref_mel_tensor, ref_label, path, wave
 
@@ -152,7 +152,7 @@ class FilePathDataset(torch.utils.data.Dataset):
         text.insert(0, 0)
         text.append(0)
         
-        text = torch.LongTensor(text)
+        text = torch.tensor(text, dtype=torch.long)
 
         return wave, text, speaker_id
 
