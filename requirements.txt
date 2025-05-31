@@ -14,4 +14,4 @@ einops-exts
 tqdm
 typing
 typing-extensions
-git+https://github.com/resemble-ai/monotonic_align.git
+git+https://github.com/goju2025/monotonic_align.git
