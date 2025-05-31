@@ -5,7 +5,7 @@ import time
 import random
 import numpy as np
 import random
-import soundfile as sf
+import torchaudio
 import librosa
 
 import torch
@@ -138,13 +138,19 @@ class FilePathDataset(torch.utils.data.Dataset):
     def _load_tensor(self, data):
         wave_path, text, speaker_id = data
         speaker_id = int(speaker_id)
-        wave, sr = sf.read(osp.join(self.root_path, wave_path))
-        if wave.shape[-1] == 2:
-            wave = wave[:, 0].squeeze()
+        print(f"Loading wave: {wave_path}")
+        wave, sr = torchaudio.load(osp.join(self.root_path, wave_path))
+        print(f"Original sr: {sr}, Original wave shape: {wave.shape}")
+        if wave.shape[0] > 1:
+            wave = wave[0, :]
+            print(f"Wave shape after channel selection: {wave.shape}")
         if sr != 24000:
-            wave = librosa.resample(wave, orig_sr=sr, target_sr=24000)
-            print(wave_path, sr)
+            print(f"Resampling from {sr} to 24000")
+            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=24000)
+            wave = resampler(wave)
+            print(f"Wave shape after resampling: {wave.shape}")
             
+        wave = wave.numpy() # torchaudio loads as tensor, convert to numpy array for downstream processing
         wave = np.concatenate([np.zeros([5000]), wave, np.zeros([5000])], axis=0)
         
         text = self.text_cleaner(text)

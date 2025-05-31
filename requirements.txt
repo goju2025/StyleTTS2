@@ -1,4 +1,3 @@
-SoundFile
 torchaudio==2.7.0
 munch
 torch==2.7.0
