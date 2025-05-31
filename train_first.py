@@ -57,12 +57,10 @@ def main(config_path):
     file_handler.setFormatter(logging.Formatter('%(levelname)s:%(asctime)s: %(message)s'))
     logger.logger.addHandler(file_handler)
     
-    batch_size = 2 # Modified for test run config.get('batch_size', 10)
-    accelerator.print(f">>> Test run: batch_size set to {batch_size}")
+    batch_size = config.get('batch_size', 10)
     device = accelerator.device
     
-    epochs = 1 # Modified for test run config.get('epochs_1st', 200)
-    accelerator.print(f">>> Test run: epochs set to {epochs}")
+    epochs = config.get('epochs_1st', 200)
     save_freq = config.get('save_freq', 2)
     log_interval = config.get('log_interval', 10)
     saving_epoch = config.get('save_freq', 2)
@@ -177,9 +175,6 @@ def main(config_path):
         _ = [model[key].train() for key in model]
 
         for i, batch in enumerate(train_dataloader):
-            if i >= 2:  # Run for only 2 batches
-                accelerator.print(">>> Test run: Reached 2 batches, breaking training loop.")
-                break
             waves = batch[0]
             batch = [b.to(device) for b in batch[1:]]
             texts, input_lengths, _, _, mels, mel_input_length, _ = batch
@@ -331,9 +326,6 @@ def main(config_path):
         with torch.no_grad():
             iters_test = 0
             for batch_idx, batch in enumerate(val_dataloader):
-                if batch_idx >= 1: # Run for only 1 validation batch
-                    accelerator.print(">>> Test run: Reached 1 validation batch, breaking validation loop.")
-                    break
                 optimizer.zero_grad()
 
                 waves = batch[0]
